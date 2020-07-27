@@ -1,7 +1,7 @@
 import shelve
 from dataclasses import dataclass
 from dataclasses_json import dataclass_json
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Type
 import db_api
 import os
 
@@ -30,30 +30,41 @@ class DBTable(db_api.DBTable):
     def insert_record(self, values) -> None:
         # check if get value for primary key
         if not values.get(self.key_field_name):
-            raise ValueError("ppp---")
+            raise ValueError
         with shelve.open(os.path.join(db_api.DB_ROOT, self.name), writeback=True) as db:
             # check if value of primary key exists in the data
             if str(values[self.key_field_name]) in list(db.keys()):
-                raise ValueError("ooo---")
+                raise ValueError
             db[str(values[self.key_field_name])] = [None] * self.count_fields
             for key in values.keys():
                 # if every key and value that I get is suitable to the data
                 if key != self.key_field_name:
                     if not db.get(key) or not isinstance(values[key], db[key][1]):
                         self.delete_record(values[self.key_field_name])
-                        raise ValueError("llll----")
+                        raise ValueError
                     db[str(values[self.key_field_name])].insert(db[key][0], values[key])
 
     def delete_record(self, key: Any) -> None:
         with shelve.open(os.path.join(db_api.DB_ROOT, self.name), writeback=True) as db:
-            if key in db.keys():
-                del db[key]
+            del db[key]
 
-    def delete_records(self, criteria: List[db_api.SelectionCriteria]) -> None:
-        raise NotImplementedError
+    def delete_records(self, criteria) -> None:
+        list_to_delete = self.query_table(criteria)
+        for item in list_to_delete:
+            self.delete_record(item.keys())
 
     def get_record(self, key: Any) -> Dict[str, Any]:
-        raise NotImplementedError
+        if not key:
+            raise ValueError
+        temp = dict()
+        with shelve.open(os.path.join(db_api.DB_ROOT, self.name), writeback=True) as db:
+            if key not in db.keys():
+                raise ValueError
+            temp[self.key_field_name] = key
+            for field in self.fields:
+                if field != self.key_field_name:
+                    temp[field] = db[key][db[field]]
+        return temp
 
     def update_record(self, key: Any, values: Dict[str, Any]) -> None:
         raise NotImplementedError
@@ -84,7 +95,7 @@ class DataBase(db_api.DataBase):
 
     # check if shelve create more than one file
     def delete_table(self, table_name) -> None:
-        os.remove(db_api.DB_ROOT.joinpath(f"{table_name}"))
+        os.remove(db_api.DB_ROOT.joinpath(f'{table_name}'))
         self.tables.pop(table_name)
 
     def get_tables_names(self) -> List[Any]:
