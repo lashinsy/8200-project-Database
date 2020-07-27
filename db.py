@@ -22,12 +22,22 @@ class DBTable(db_api.DBTable):
                     index += 1
             self.count_fields = len(db)
 
-    def count(self) -> int:
+    def is_dict_suitable_table(self, table, dict_data):
+        for key in dict_data.keys():
+            if key != self.key_field_name:
+                if not table.get(key) or not isinstance(dict_data[key], table[key][1]):
+                    raise ValueError
+                else:
+                    if not isinstance(dict_data[key], self.fields[key].type):
+                        raise ValueError
+        return True
+
+    def count(self):
         with shelve.open(os.path.join(db_api.DB_ROOT, self.name), 'r') as db:
             count = len(db) - self.count_fields
         return count
 
-    def insert_record(self, values) -> None:
+    def insert_record(self, values):
         # check if get value for primary key
         if not values.get(self.key_field_name):
             raise ValueError
@@ -35,25 +45,22 @@ class DBTable(db_api.DBTable):
             # check if value of primary key exists in the data
             if str(values[self.key_field_name]) in list(db.keys()):
                 raise ValueError
-            db[str(values[self.key_field_name])] = [None] * self.count_fields
-            for key in values.keys():
-                # if every key and value that I get is suitable to the data
-                if key != self.key_field_name:
-                    if not db.get(key) or not isinstance(values[key], db[key][1]):
-                        self.delete_record(values[self.key_field_name])
-                        raise ValueError
+            # if every key and value that I get is suitable to the data
+            if self.is_dict_suitable_table(db, values):
+                db[str(values[self.key_field_name])] = [None] * self.count_fields
+                for key in values.keys():
                     db[str(values[self.key_field_name])].insert(db[key][0], values[key])
 
-    def delete_record(self, key: Any) -> None:
+    def delete_record(self, key):
         with shelve.open(os.path.join(db_api.DB_ROOT, self.name), writeback=True) as db:
             del db[key]
 
-    def delete_records(self, criteria) -> None:
+    def delete_records(self, criteria):
         list_to_delete = self.query_table(criteria)
         for item in list_to_delete:
-            self.delete_record(item.keys())
+            self.delete_record(item[self.key_field_name])
 
-    def get_record(self, key: Any) -> Dict[str, Any]:
+    def get_record(self, key):
         if not key:
             raise ValueError
         temp = dict()
@@ -66,10 +73,15 @@ class DBTable(db_api.DBTable):
                     temp[field] = db[key][db[field]]
         return temp
 
-    def update_record(self, key: Any, values: Dict[str, Any]) -> None:
-        pass
+    def update_record(self, key, values):
+        with shelve.open(os.path.join(db_api.DB_ROOT, self.name), writeback=True) as db:
+            if key not in db.keys():
+                raise ValueError
+            if self.is_dict_suitable_table(db, values):
+                for val_key, val_value in values.items():
+                    db[key][db[val_key]] = val_value
 
-    def query_table(self, criteria: List[db_api.SelectionCriteria]) -> List[Dict[str, Any]]:
+    def query_table(self, criteria):
         temp = list()
         with shelve.open(os.path.join(db_api.DB_ROOT, self.name), writeback=True) as db:
             for key in db.keys():
@@ -80,7 +92,7 @@ class DBTable(db_api.DBTable):
                             break
         return temp
 
-    def create_index(self, field_to_index: str) -> None:
+    def create_index(self, field_to_index):
         pass
 
 
