@@ -5,6 +5,8 @@ from typing import Any, Dict, List, Type
 import db_api
 import os
 
+'''where we use operator[] on dict, we want to throw exception if the key doesn't exist'''
+
 
 @dataclass_json
 @dataclass
@@ -27,9 +29,11 @@ class DBTable(db_api.DBTable):
             if key != self.key_field_name:
                 if not table.get(key) or not isinstance(dict_data[key], table[key][1]):
                     raise ValueError
-                else:
-                    if not isinstance(dict_data[key], self.fields[key].type):
-                        raise ValueError
+            else:
+                for field in self.fields:
+                    if field.name == self.key_field_name:
+                        if not isinstance(dict_data[key], field.type):
+                            raise ValueError
         return True
 
     def count(self):
@@ -49,7 +53,8 @@ class DBTable(db_api.DBTable):
             if self.is_dict_suitable_table(db, values):
                 db[str(values[self.key_field_name])] = [None] * self.count_fields
                 for key in values.keys():
-                    db[str(values[self.key_field_name])].insert(db[key][0], values[key])
+                    if key != self.key_field_name:
+                        db[str(values[self.key_field_name])].insert(db[key][0], values[key])
 
     def delete_record(self, key):
         with shelve.open(os.path.join(db_api.DB_ROOT, self.name), writeback=True) as db:
@@ -102,24 +107,25 @@ class DataBase(db_api.DataBase):
     def __init__(self):
         self.tables = dict()
 
-    # להוסיף בדיקות האם הטבלה קיימת בכלל
-    def create_table(self, table_name, fields, key_field_name) -> DBTable:
+    def create_table(self, table_name, fields, key_field_name):
+        if table_name in self.tables.keys():
+            raise ValueError
         self.tables[table_name] = DBTable(table_name, fields, key_field_name)
         return self.tables[table_name]
 
-    def num_tables(self) -> int:
+    def num_tables(self):
         return len(self.tables)
 
-    def get_table(self, table_name) -> DBTable:
-        return self.tables.get(table_name)
+    def get_table(self, table_name):
+        return self.tables[table_name]
 
-    # check if shelve create more than one file
-    def delete_table(self, table_name) -> None:
-        os.remove(db_api.DB_ROOT.joinpath(f'{table_name}'))
+    def delete_table(self, table_name):
+        for suffix in ['bak', 'dat', 'dir']:
+            os.remove(db_api.DB_ROOT.joinpath(f'{table_name}.{suffix}'))
         self.tables.pop(table_name)
 
-    def get_tables_names(self) -> List[Any]:
+    def get_tables_names(self):
         return list(self.tables.keys())
 
-    def query_multiple_tables(self, tables, fields_and_values_list, fields_to_join_by) -> List[Dict[str, Any]]:
+    def query_multiple_tables(self, tables, fields_and_values_list, fields_to_join_by):
         pass
