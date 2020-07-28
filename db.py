@@ -105,8 +105,9 @@ class DBTable(db_api.DBTable):
                     flag = True
                     for item in criteria:
                         str_operator = operators.get(item.operator)
-                        if item.field_name == self.key_field_name and not str_operator(key, str(item.value)):
-                            flag = False
+                        if item.field_name == self.key_field_name:
+                            if not str_operator(key, str(item.value)):
+                                flag = False
                         elif not str_operator(db[key][db[item.field_name][0]], str(item.value)):
                             flag = False
                     if flag:
