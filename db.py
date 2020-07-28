@@ -1,7 +1,6 @@
 import shelve
 from dataclasses import dataclass
 from dataclasses_json import dataclass_json
-from typing import Any, Dict, List, Type
 import db_api
 import os
 
@@ -123,12 +122,20 @@ class DBTable(db_api.DBTable):
 class DataBase(db_api.DataBase):
     __tables__ = dict()
 
+    def __init__(self):
+        with shelve.open('DB', writeback=True) as db:
+            for key in db:
+                DataBase.__tables__[key] = DBTable(key, db[key][0], db[key][1])
+
     def create_table(self, table_name, fields, key_field_name):
-        if table_name in DataBase.__tables__.keys():
-            raise ValueError
-        if key_field_name not in [field.name for field in fields]:
-            raise ValueError
-        DataBase.__tables__[table_name] = DBTable(table_name, fields, key_field_name)
+        if table_name not in DataBase.__tables__.keys():
+            if key_field_name not in [field.name for field in fields]:
+                raise ValueError
+
+            with shelve.open('DB', writeback=True) as db:
+                db[table_name] = [fields, key_field_name]
+
+            DataBase.__tables__[table_name] = DBTable(table_name, fields, key_field_name)
         return DataBase.__tables__[table_name]
 
     def num_tables(self):
@@ -138,9 +145,12 @@ class DataBase(db_api.DataBase):
         return DataBase.__tables__[table_name]
 
     def delete_table(self, table_name):
-        for suffix in ['bak', 'dat', 'dir']:
-            os.remove(db_api.DB_ROOT.joinpath(f'{table_name}.{suffix}'))
-        DataBase.__tables__.pop(table_name)
+        if table_name in self.get_tables_names():
+            for suffix in ['bak', 'dat', 'dir']:
+                os.remove(db_api.DB_ROOT.joinpath(f'{table_name}.{suffix}'))
+            # with shelve.open('DB', writeback=True) as db:
+            #     del db[table_name]
+            DataBase.__tables__.pop(table_name)
 
     def get_tables_names(self):
         return list(DataBase.__tables__.keys())
