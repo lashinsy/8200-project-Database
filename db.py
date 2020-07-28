@@ -4,6 +4,16 @@ from dataclasses_json import dataclass_json
 from typing import Any, Dict, List, Type
 import db_api
 import os
+import operator
+operators = {
+    '<': operator.lt,
+    '<=': operator.le,
+    '==': operator.eq,
+    '!=': operator.ne,
+    '>=': operator.ge,
+    '>': operator.gt
+}
+
 
 '''where we use operator[] on dict, we want to throw exception if the key doesn't exist'''
 
@@ -22,7 +32,6 @@ class DBTable(db_api.DBTable):
                 if field.name != key_field_name:
                     db[field.name] = [index, field.type]
                     index += 1
-            self.count_fields = len(db)
 
     def is_dict_suitable_table(self, table, dict_data):
         for key in dict_data.keys():
@@ -38,8 +47,7 @@ class DBTable(db_api.DBTable):
 
     def count(self):
         with shelve.open(os.path.join(db_api.DB_ROOT, self.name), 'r') as db:
-            count = len(db) - self.count_fields
-        return count
+            return len(db) - len(self.fields) + 1
 
     def insert_record(self, values):
         # check if get value for primary key
@@ -51,14 +59,14 @@ class DBTable(db_api.DBTable):
                 raise ValueError
             # if every key and value that I get is suitable to the data
             if self.is_dict_suitable_table(db, values):
-                db[str(values[self.key_field_name])] = [None] * self.count_fields
+                db[str(values[self.key_field_name])] = [None] * len(self.fields)
                 for key in values.keys():
                     if key != self.key_field_name:
                         db[str(values[self.key_field_name])].insert(db[key][0], values[key])
 
     def delete_record(self, key):
         with shelve.open(os.path.join(db_api.DB_ROOT, self.name), writeback=True) as db:
-            del db[key]
+            del db[str(key)]
 
     def delete_records(self, criteria):
         list_to_delete = self.query_table(criteria)
@@ -70,31 +78,39 @@ class DBTable(db_api.DBTable):
             raise ValueError
         temp = dict()
         with shelve.open(os.path.join(db_api.DB_ROOT, self.name), writeback=True) as db:
-            if key not in db.keys():
+            if str(key) not in db.keys():
                 raise ValueError
             temp[self.key_field_name] = key
             for field in self.fields:
-                if field != self.key_field_name:
-                    temp[field] = db[key][db[field]]
+                if field.name != self.key_field_name:
+                    temp[field.name] = db[str(key)][db[field.name][0]]
         return temp
 
     def update_record(self, key, values):
         with shelve.open(os.path.join(db_api.DB_ROOT, self.name), writeback=True) as db:
-            if key not in db.keys():
+            if str(key) not in db.keys():
                 raise ValueError
             if self.is_dict_suitable_table(db, values):
                 for val_key, val_value in values.items():
-                    db[key][db[val_key]] = val_value
+                    db[str(key)][db[val_key][0]] = val_value
 
     def query_table(self, criteria):
         temp = list()
         with shelve.open(os.path.join(db_api.DB_ROOT, self.name), writeback=True) as db:
             for key in db.keys():
-                if key not in self.fields:
+                if key not in [field.name for field in self.fields]:
+                    flag = True
                     for item in criteria:
-                        if eval(f'{db[key][db[item.field_name]]}{item.operator}{item.value}'):
-                            temp.append(self.get_record(key))
-                            break
+                        if item.operator == "=":
+                            item.operator = "=="
+                        str_operator = operators.get(item.operator)
+                        if item.field_name == self.key_field_name:
+                            if not str_operator(key, str(item.value)):
+                                flag = False
+                        elif not str_operator(db[key][db[item.field_name][0]], str(item.value)):
+                            flag = False
+                    if flag:
+                        temp.append(self.get_record(key))
         return temp
 
     def create_index(self, field_to_index):
@@ -104,11 +120,14 @@ class DBTable(db_api.DBTable):
 @dataclass_json
 @dataclass
 class DataBase(db_api.DataBase):
+
     def __init__(self):
         self.tables = dict()
 
     def create_table(self, table_name, fields, key_field_name):
         if table_name in self.tables.keys():
+            raise ValueError
+        if key_field_name not in [field.name for field in fields]:
             raise ValueError
         self.tables[table_name] = DBTable(table_name, fields, key_field_name)
         return self.tables[table_name]
