@@ -4,11 +4,12 @@ from dataclasses_json import dataclass_json
 from typing import Any, Dict, List, Type
 import db_api
 import os
+
 import operator
 operators = {
     '<': operator.lt,
     '<=': operator.le,
-    '==': operator.eq,
+    '=': operator.eq,
     '!=': operator.ne,
     '>=': operator.ge,
     '>': operator.gt
@@ -66,6 +67,8 @@ class DBTable(db_api.DBTable):
 
     def delete_record(self, key):
         with shelve.open(os.path.join(db_api.DB_ROOT, self.name), writeback=True) as db:
+            if str(key) not in db.keys():
+                raise ValueError
             del db[str(key)]
 
     def delete_records(self, criteria):
@@ -101,12 +104,9 @@ class DBTable(db_api.DBTable):
                 if key not in [field.name for field in self.fields]:
                     flag = True
                     for item in criteria:
-                        if item.operator == "=":
-                            item.operator = "=="
                         str_operator = operators.get(item.operator)
-                        if item.field_name == self.key_field_name:
-                            if not str_operator(key, str(item.value)):
-                                flag = False
+                        if item.field_name == self.key_field_name and not str_operator(key, str(item.value)):
+                            flag = False
                         elif not str_operator(db[key][db[item.field_name][0]], str(item.value)):
                             flag = False
                     if flag:
@@ -120,31 +120,29 @@ class DBTable(db_api.DBTable):
 @dataclass_json
 @dataclass
 class DataBase(db_api.DataBase):
-
-    def __init__(self):
-        self.tables = dict()
+    __tables__ = dict()
 
     def create_table(self, table_name, fields, key_field_name):
-        if table_name in self.tables.keys():
+        if table_name in DataBase.__tables__.keys():
             raise ValueError
         if key_field_name not in [field.name for field in fields]:
             raise ValueError
-        self.tables[table_name] = DBTable(table_name, fields, key_field_name)
-        return self.tables[table_name]
+        DataBase.__tables__[table_name] = DBTable(table_name, fields, key_field_name)
+        return DataBase.__tables__[table_name]
 
     def num_tables(self):
-        return len(self.tables)
+        return len(DataBase.__tables__)
 
     def get_table(self, table_name):
-        return self.tables[table_name]
+        return DataBase.__tables__[table_name]
 
     def delete_table(self, table_name):
         for suffix in ['bak', 'dat', 'dir']:
             os.remove(db_api.DB_ROOT.joinpath(f'{table_name}.{suffix}'))
-        self.tables.pop(table_name)
+        DataBase.__tables__.pop(table_name)
 
     def get_tables_names(self):
-        return list(self.tables.keys())
+        return list(DataBase.__tables__.keys())
 
     def query_multiple_tables(self, tables, fields_and_values_list, fields_to_join_by):
         pass
