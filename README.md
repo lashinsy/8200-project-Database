@@ -1,6 +1,6 @@
 # **Adva 8200 project**
 ## Constructing a fully operational self-made database.
-## using pre-written test cases using Python, involving run-time and I/O bound optimizations.
+## using pre-written test cases using python, involving run-time and I/O bound optimizations.
 
 
 ## Libraries/Technologies Used:
@@ -8,5 +8,6 @@
 * shelve
 * os
 * pathlib
+* pytest
 * dataclasses
-* dataclasses_json
+
